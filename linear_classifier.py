@@ -13,8 +13,7 @@ from tqdm.auto import tqdm
 from time import sleep
 from sklearn.preprocessing import MinMaxScaler
 import argparse
-from sklearn.metrics import classification_report,confusion_matrix
-
+import math
 
 from dataset import dataloader, classifier_dataloader
 from model import encoder_cada, decoder_cada, Classifier
@@ -29,37 +28,35 @@ parser.add_argument('--epochs', type=int, default=100,
 					help='Number of epochs')
 parser.add_argument('--latent_size', type=int, default=64,
 					help='size of the latent vector')
-parser.add_argument('--dataset_path', type=str, default='../../../dataset/xlsa17/data/CUB/',
+parser.add_argument('--dataset_path', type=str, default='../../dataset/xlsa17/data/CUB/',
 					help='Name of the dataset')
-parser.add_argument('--split', type=str, default='train',
-					help='Which feature to generate')
-parser.add_argument('--model_path', type=str, default='models/checkpoint_100.pth',
-					help='math of pretrained model')
-parser.add_argument('--features_save', type=str, default='features_extracted/CUB/',
-					help='path to save features')
+parser.add_argument('--model_path', type=str, default='models/checkpoint_cada.pth',
+					help='path of pretrained model')
 parser.add_argument('--device', type=str, default='cpu',
 					help='cuda or cpu')
-
+parser.add_argument('--pretrained', default=False, action="store_true" , help="Load pretrained weights")
+args = parser.parse_args()
 
 
 class Gzsl_vae():
 	"""docstring for Gzsl_vae"""
-	def __init__(self, ):
-		args = parser.parse_args()
+	def __init__(self,args):
 		self.device = torch.device(args.device)
 
 		######################## LOAD DATA #############################
-		self.trainval_set = dataloader(root=args.dataset_path,split='trainval', device=self.device)
+		self.scalar = MinMaxScaler()
+		self.trainval_set = dataloader(transform=self.scalar,root=args.dataset_path,split='trainval', device=self.device)
 		#train_set = dataloader(root=args.dataset_path,split='train', device=self.device)
-		self.test_set = dataloader(root=args.dataset_path,split='test_unseen', device=self.device)
-		self.test_set_seen = dataloader(root=args.dataset_path,split='test_seen', device=self.device)
+		self.test_set_unseen = dataloader(transform=self.scalar,root=args.dataset_path,split='test_unseen', device=self.device)
+		self.test_set_seen = dataloader(transform=self.scalar,root=args.dataset_path,split='test_seen', device=self.device)
 		#val_set = dataloader(root=args.dataset_path,split='val', device=self.device)		
 
 		self.trainloader = data.DataLoader(self.trainval_set, batch_size=args.batch_size, shuffle=True)
-		#self.testloader = data.DataLoader(self.test_set, batch_size=args.batch_size, shuffle=False)		
+		#self.testloader_unseen = data.DataLoader(self.test_set_unseen, batch_size=args.batch_size, shuffle=False) #for val	
+		#self.testloader_seen = data.DataLoader(self.test_set_seen, batch_size=args.batch_size, shuffle=False) #for val
 
 		self.input_dim = self.trainval_set.__getlen__()
-		self.atts_dim = self.test_set.__get_attlen__()
+		self.atts_dim = self.trainval_set.__get_attlen__()
 		self.num_classes = self.trainval_set.__totalClasses__()
 		
 		print(20*('-'))
@@ -84,11 +81,22 @@ class Gzsl_vae():
 		print(self.model_decoder)
 		print(self.classifier)
 
+		################### LOAD PRETRAINED MODEL ########################
+		if args.pretrained:
+			if args.model_path == '':
+				print("Please provide the path of the pretrained model.")
+			else:
+				checkpoint = torch.load(args.model_path)
+				self.model_encoder.load_state_dict(checkpoint['model_encoder_state_dict'])
+				self.model_decoder.load_state_dict(checkpoint['model_decoder_state_dict'])
+				print(">> Pretrained model loaded!")
 
 		########## LOSS ############
 		self.l1_loss = nn.L1Loss(reduction='sum')
 		self.lossfunction_classifier =  nn.NLLLoss()
 
+
+		######### Hyper-params #######
 		self.gamma = torch.zeros(1, device=self.device).float()
 		self.beta = torch.zeros(1, device=self.device).float()
 		self.delta = torch.zeros(1, device=self.device).float()
@@ -143,95 +151,83 @@ class Gzsl_vae():
 				'epoch':epoch,
 				'model_encoder_state_dict':self.model_encoder.state_dict(),
 				'model_decoder_state_dict':self.model_decoder.state_dict(),				
-				'optimizer_state_dict':optimizer.state_dict(),
+				'optimizer_state_dict':self.optimizer.state_dict(),
 				'loss':loss,
 				}, name)
 		
 
 
-	def extract_features(self, split):
-		'''
-
-		This function is used to extract the features from the encoder network
-
-		'''
-		features_img = []
-		features_att = []
-		gt = []
-		self.model_encoder.eval()
-
-		if split == 'trainval':
-			num_classes = self.trainval_set.__NumClasses__()
-		if split == 'test_unseen':
-			num_classes = self.test_set.__NumClasses__()
-		if split == 'test_seen':
-			num_classes = self.test_set_seen.__NumClasses__()
-
-		for n in num_classes:
-			# 50 latent features per seen classes and 100 latent features per unseen classes
-			if split == 'trainval':
-				num_features = 200
-				indexs = self.trainval_set.__getLabels__(n)
-				dataset = self.trainval_set
-			if split == 'test_unseen':
-				num_features = 400
-				indexs = self.test_set.__getLabels__(n)
-				dataset = self.test_set
-			if split == 'test_seen':
-				num_features = 200
-				indexs = self.test_set_seen.__getLabels__(n)
-				dataset = self.test_set_seen				
-
-			index_of_classLabels = indexs.tolist()
-			if len(index_of_classLabels) < num_features:
-				j = num_features - len(index_of_classLabels)
-				index_of_classLabels = index_of_classLabels[:j] + index_of_classLabels
-			else:
-				index_of_classLabels = index_of_classLabels[:num_features]
-			#print(len(index_of_classLabels))
-			x_list = []
-			y_list = []
-			sig_list = []
-			with torch.no_grad():
-				for i in index_of_classLabels:
-					x,y,sig = dataset.__getitem__(i)
-					x_list.append(torch.unsqueeze(x, dim=0))
-					y_list.append(torch.unsqueeze(y, dim=0))
-					sig_list.append(torch.unsqueeze(sig, dim=0))
-				x_tensor = torch.cat(x_list)
-				y_tensor = torch.cat(y_list)
-				sig_tensor = torch.cat(sig_list)
-
-				z_imgs, z_atts, mu_imgs, logvar_imgs, mu_att, logvar_att = self.model_encoder(x_tensor, sig_tensor)
-				features_img.extend(torch.unsqueeze(z_imgs.detach(), dim=0)) #make it a torch tensor
-				features_att.extend(torch.unsqueeze(z_atts.detach(), dim=0))
-				gt.extend(y_tensor)
-
-		return features_img, features_att, gt, num_classes
-
-
-
 	##################### FEATURE EXTRCTION #######################
-	def prepare_data_classifier(self,batch_size):
+	def extract_features(self,params):
 		print(20*'-')
 		print("Preparing dataset for the classifier..")
-		trainval_features_img, trainval_features_att, trainval_labels, self.trainval_target_classes = self.extract_features('trainval')
-		print(">> Extraction of trainval features is complete!")
-		test_features_img_unseen, test_features_att_unseen, test_labels_unseen, self.test_unseen_target_classes = self.extract_features('test_unseen')
-		print(">> Extraction of test_unseen features is complete!")
-		test_features_img_seen, test_features_att_seen, test_labels_seen, self.test_seen_target_classes = self.extract_features('test_seen')
-		print(">> Extraction of test_seen features is complete!")
 
-		self.cls_data_trainval = classifier_dataloader(trainval_features_img, trainval_features_att, trainval_labels)
-		self.cls_data_test_unseen = classifier_dataloader(test_features_img_unseen, test_features_att_unseen, test_labels_unseen)
-		self.cls_data_test_seen = classifier_dataloader(test_features_img_seen, test_features_att_seen, test_labels_seen)
+		img_seen_feats = params['img_seen']
+		img_unseen_feats = params['img_unseen']
+		att_seen_feats = params['att_seen']
+		att_unseen_feats = params['att_unseen']
 
-		self.cls_trainloader = data.DataLoader(self.cls_data_trainval, batch_size=batch_size, shuffle=True)
-		self.cls_testloader_unseen = data.DataLoader(self.cls_data_test_unseen, batch_size=batch_size, shuffle=False)
-		self.cls_testloader_seen = data.DataLoader(self.cls_data_test_seen, batch_size=batch_size, shuffle=False)
+		seen_classes = self.trainval_set.__NumClasses__()
+		unseen_classes = self.test_set_unseen.__NumClasses__()
+
+		#atts for unseen classes
+		attribute_vector_unseen, labels_unseen = self.test_set_unseen.__attributeVector__()
+
+		#for trainval features:
+		features_seen = []
+		labels_seen = []
+		for n in seen_classes:
+			perclass_feats = self.trainval_set.__get_perclass_feats__(n)
+			repeat_factor = math.ceil(img_seen_feats/perclass_feats.shape[0])
+			perclass_X = np.repeat(perclass_feats, repeat_factor, axis=0)
+			perclass_labels = torch.from_numpy(np.repeat(n, img_seen_feats, axis=0)).long()
+			seen_feats = perclass_X[:img_seen_feats].float()
+			# if seen_feats.shape[0] < 200:
+			# 	print(n,"-------", seen_feats.shape)
+			features_seen.append(seen_feats)
+			labels_seen.append(perclass_labels)
+
+		tensor_seen_features = torch.cat(features_seen)
+		tensor_seen_feats_labels = torch.cat(labels_seen)
+		tensor_unseen_attributes = torch.from_numpy(np.repeat(attribute_vector_unseen,att_unseen_feats,axis=0)).float()
+		tensor_unseen_labels = torch.from_numpy(np.repeat(labels_unseen,att_unseen_feats,axis=0)).long()
+
+		test_unseen_X, test_unseen_Y = self.test_set_unseen.__Test_Features_Labels__()
+		test_seen_X, test_seen_Y = self.test_set_seen.__Test_Features_Labels__()
+
+		with torch.no_grad():
+			z_img, z_att, mu_x, logvar_x, mu_att, logvar_att = self.model_encoder(tensor_seen_features, tensor_unseen_attributes)
+			z_unseen_test_img, z_unseen_test_att, mu_x_unseen, logvar_x, mu_att, logvar_att = self.model_encoder(test_unseen_X, tensor_unseen_attributes)
+			z_seen_test_img, z_unseen_test_att, mu_x_seen, logvar_x, mu_att, logvar_att = self.model_encoder(test_seen_X, tensor_unseen_attributes)
+
+			train_features = torch.cat((z_att,z_img))
+			train_labels = torch.cat((tensor_unseen_labels, tensor_seen_feats_labels))
+
+		test_unseen_Y = torch.squeeze(test_unseen_Y)
+		test_seen_Y = torch.squeeze(test_seen_Y)
+
+		print(">> Extraction of trainval, test seen, and test unseen features are complete!")
+		print(train_features.shape, train_labels.shape)
+		#return train_features, train_labels, z_unseen_test_img, test_unseen_Y, z_seen_test_img, test_seen_Y
+		return train_features, train_labels, mu_x_unseen, test_unseen_Y, mu_x_seen, test_seen_Y
+
 
 	##################### TRAINING THE CLASSIFIER #######################
 	def train_classifier(self,epochs):
+		train_features, train_labels, test_unseen_features, test_unseen_labels, test_seen_features, test_seen_labels = self.extract_features(params)
+
+		self.cls_trainData = classifier_dataloader(features_img=train_features, labels=train_labels, device=self.device)
+		self.cls_trainloader = data.DataLoader(self.cls_trainData, batch_size=100, shuffle=True)
+
+		self.cls_test_unseen = classifier_dataloader(features_img=test_unseen_features, labels=test_unseen_labels, device=self.device)
+		self.cls_test_unseenLoader = data.DataLoader(self.cls_test_unseen, batch_size=100, shuffle=False)
+		self.test_unseen_target_classes = self.cls_test_unseen.__targetClasses__()		
+
+		self.cls_test_seen = classifier_dataloader(features_img=test_seen_features, labels=test_seen_labels, device=self.device)
+		self.cls_test_seenLoader = data.DataLoader(self.cls_test_seen, batch_size=100, shuffle=False)
+		self.test_seen_target_classes = self.cls_test_seen.__targetClasses__()
+
+
 		best_H = -1
 		best_seen = 0
 		best_unseen = 0
@@ -241,7 +237,7 @@ class Gzsl_vae():
 			self.classifier.train()
 			trainbar_cls = tqdm(self.cls_trainloader)
 			train_loss = 0
-			for batch_idx,(x, sig, y) in enumerate(trainbar_cls):
+			for batch_idx,(x, y) in enumerate(trainbar_cls):
 				output = self.classifier(x)
 				loss = self.lossfunction_classifier(output,y)
 				self.cls_optimizer.zero_grad()
@@ -251,15 +247,15 @@ class Gzsl_vae():
 				trainbar_cls.set_description('l:%.3f' %(train_loss/(batch_idx+1)))
 
 			########## VALIDATION ##################
-			#accu_unseen = 0
-			#accu_seen = 0
+			accu_unseen = 0
+			accu_seen = 0
 			def val_gzsl(testbar_cls):
 				with torch.no_grad():
 					self.classifier.eval()
 					print("**Validation**")
 					preds = []
 					target = []
-					for batch_idx, (x, sig, y) in enumerate(testbar_cls):
+					for batch_idx, (x, y) in enumerate(testbar_cls):
 						output = self.classifier(x)
 						output_data = torch.argmax(output.data,1)
 						preds.append(output_data)
@@ -268,31 +264,39 @@ class Gzsl_vae():
 					targets = torch.cat(target)
 					return predictions, targets
 
-			testbar_cls_unseen = tqdm(self.cls_testloader_unseen)
-			testbar_cls_seen = tqdm(self.cls_testloader_seen)
+			testbar_cls_unseen = tqdm(self.cls_test_unseenLoader)
+			testbar_cls_seen = tqdm(self.cls_test_seenLoader)
 
 			preds_unseen, target_unseen = val_gzsl(testbar_cls_unseen)
 			preds_seen, target_seen = val_gzsl(testbar_cls_seen)
 
-			############### ACCURACY METRIC ##################
+			########## ACCURACY METRIC ##################
 			def compute_per_class_acc_gzsl(test_label, predicted_label, target_classes):
-				# per_class_accuracies = torch.zeros(target_classes.shape[0]).float().to(self.device)
-				# predicted_label = predicted_label.to(self.device)
-				# for i in range(target_classes.shape[0]):
-				# 	is_class = test_label==target_classes[i]
-				# 	per_class_accuracies[i] = torch.div((predicted_label[is_class]==test_label[is_class]).sum().float(),is_class.sum().float())
-				# return per_class_accuracies.mean()
-				cm = confusion_matrix(test_label, predicted_label)
-				cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-				avg = sum(cm.diagonal())/len(target_classes)
-				return avg
+				per_class_accuracies = torch.zeros(target_classes.shape[0]).float().to(self.device)
+				predicted_label = predicted_label.to(self.device)
+				for i in range(target_classes.shape[0]):
+					is_class = test_label==target_classes[i]
+					per_class_accuracies[i] = torch.div((predicted_label[is_class]==test_label[is_class]).sum().float(),is_class.sum().float())
+				return per_class_accuracies.mean()
 
-			#adding 1 to index classes from 1-200
-			accu_unseen = compute_per_class_acc_gzsl(target_unseen, preds_unseen+1, self.test_unseen_target_classes)
-			accu_seen = compute_per_class_acc_gzsl(target_seen, preds_seen+1, self.test_seen_target_classes)
+			##################################
+			'''
+			For NLLL loss the labels are 
+			mapped from 0-n, map them back to 1-n 
+			for calculating accuracies.
+			'''
+			target_unseen = target_unseen + 1
+			preds_unseen = preds_unseen + 1
+			target_seen = target_seen + 1
+			preds_seen = preds_seen + 1
+			##################################
+
+
+			accu_unseen = compute_per_class_acc_gzsl(target_unseen, preds_unseen, self.test_unseen_target_classes)
+			accu_seen = compute_per_class_acc_gzsl(target_seen, preds_seen, self.test_seen_target_classes)
 
 			if (accu_seen+accu_unseen)>0:
-				H = (2*acc_seen*acc_novel) / (acc_seen+acc_novel)
+				H = (2*accu_seen*accu_unseen) / (accu_seen+accu_unseen)
 			else:
 				H = 0
 
@@ -305,6 +309,7 @@ class Gzsl_vae():
 			print(20*'-')
 			print('Epoch:', epoch)
 			print('u, s, h =%.4f,%.4f,%.4f'%(best_unseen,best_seen,best_H))
+			print('u, s, h =%.4f,%.4f,%.4f'%(accu_unseen,accu_seen,H))
 			print(20*'-')
 				
 		return best_seen, best_unseen, best_H
@@ -312,24 +317,28 @@ class Gzsl_vae():
 
 
 if __name__=='__main__':
-	model = Gzsl_vae()
-	epochs=100
-	for epoch in range(1, epochs + 1):
-		print("epoch:", epoch)
-		model.train(epoch)
+	model = Gzsl_vae(args)
+	if not args.pretrained:
+		epochs=100
+		for epoch in range(1, epochs + 1):
+			print("epoch:", epoch)
+			model.train(epoch)
+	else:
+		#CLASSIFIER
+		params = {'img_seen':200,
+				'img_unseen':0,
+				'att_seen':0,
+				'att_unseen':400}
 
-	#CLASSIFIER
-	nepochs = 20
-	model.prepare_data_classifier(batch_size=100)
-	s, u, h = model.train_classifier(nepochs)
+		nepochs = 20
+		s, u, h = model.train_classifier(nepochs)
 
 
 
 '''
-To check:
-1. Are the features being extracted properly?
-2. Is the evaluation metric correct?
-3. Is the classifier correct?
+To complete:
+1. classifier not updating after 2nd epoch 
+
 
 '''
 	

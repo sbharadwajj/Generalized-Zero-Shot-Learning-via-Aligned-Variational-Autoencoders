@@ -8,17 +8,17 @@ import torch.utils.data as data
 import scipy.io
 import numpy as np
 from tqdm import tqdm
-from sklearn.preprocessing import MinMaxScaler
+
 
 class dataloader(Dataset):
 	"""docstring for CUB"""
-	def __init__(self, root='/content/drive/My Drive/computer_vision/datasets/CUB/', split='train', device='cpu',transform=None):
+	def __init__(self,transform, root='/content/drive/My Drive/computer_vision/datasets/CUB/', split='train', device='cpu'):
 		path_features = root + 'res101.mat'
 		path_att_splits = root + 'att_splits.mat'
 		self.res101 = scipy.io.loadmat(path_features)
 		att_splits = scipy.io.loadmat(path_att_splits)
 
-		self.scaler = MinMaxScaler()
+		self.scaler = transform
 
 		self.labels, self.feats, self.sig = self.get_data(att_splits, split)
 		assert len(self.labels) == len(self.feats) == len(self.sig)
@@ -26,7 +26,7 @@ class dataloader(Dataset):
 			raise(RuntimeError("Found zero feats in the directory: "+ root))
 
 		self.feats_ = torch.from_numpy(self.feats).float().to(device)
-		self.labels_ = torch.from_numpy(self.labels).float().to(device)
+		self.labels_ = torch.from_numpy(self.labels).long().to(device)
 		self.sig_ = torch.from_numpy(self.sig).float().to(device)
 
 	def __getitem__(self, index):
@@ -36,10 +36,10 @@ class dataloader(Dataset):
 		y = self.labels_[index]
 		return x,y,sig
 
-	def __getLabels__(self, index):
+	def __get_perclass_feats__(self, index):
 		if index in np.unique(self.labels_):
 			idx = np.where(self.labels_==index)
-			return idx[0]
+			return self.feats_[idx[0],:]
 
 	def __NumClasses__(self):
 		return np.unique(self.labels_)
@@ -54,6 +54,12 @@ class dataloader(Dataset):
 
 	def __totalClasses__(self):
 		return len(np.unique(self.res101['labels']).tolist())
+
+	def __attributeVector__(self):
+		return self.signature[:,np.unique(self.labels_)].transpose(), np.unique(self.labels_)
+
+	def __Test_Features_Labels__(self):
+		return self.feats_, self.labels_
 
 
 	def check_unique_labels(self, labels, att_splits):
@@ -72,10 +78,10 @@ class dataloader(Dataset):
 		self.trainval_labels_seen = np.unique(self.labels_trainval)
 		self.test_labels_unseen = np.unique(self.labels_test)   
 
-		print("Number of overlapping classes between train and val:",
-			len(set(self.train_labels_seen).intersection(set(self.val_labels_unseen))))
-		print("Number of overlapping classes between trainval and test:",
-			len(set(self.trainval_labels_seen).intersection(set(self.test_labels_unseen))))
+		#print("Number of overlapping classes between train and val:",
+			#len(set(self.train_labels_seen).intersection(set(self.val_labels_unseen))))
+		#print("Number of overlapping classes between trainval and test:",
+			#len(set(self.trainval_labels_seen).intersection(set(self.test_labels_unseen))))
 		
 	def __len__(self):
 		return self.feats.shape[0]
@@ -83,7 +89,7 @@ class dataloader(Dataset):
 	def get_data(self, att_splits, split):
 		labels = self.res101['labels']
 		X_features = self.res101['features']
-		signature = att_splits['att']
+		self.signature = att_splits['att']
 		
 		self.check_unique_labels(labels, att_splits)
 		if split == 'trainval':
@@ -101,35 +107,31 @@ class dataloader(Dataset):
 		feat_vec = np.transpose(X_features[:,np.squeeze(att_splits[loc]-1)])
 		
 		unique_labels = np.unique(labels_loc)
-		sig_vec = np.zeros((labels_loc.shape[0],signature.shape[0]))
+		sig_vec = np.zeros((labels_loc.shape[0],self.signature.shape[0]))
 		labels_list = np.squeeze(labels_loc).tolist()
 		for i, idx in enumerate(labels_list):
-		  sig_vec[i,:] = signature[:,idx-1]
+		  sig_vec[i,:] = self.signature[:,idx-1]
 		
 		self.scaler.fit_transform(feat_vec)
 
-		return labels_loc, sig_vec, feat_vec
+		return labels_loc, feat_vec, sig_vec
 		
 class classifier_dataloader(Dataset):
 	"""docstring for classifier_dataloader"""
-	def __init__(self, features_img, features_att, labels):
-		self.labels = labels
-		self.feats = torch.cat(features_img)
-		self.atts = torch.cat(features_att)
-		self.y = torch.cat(labels).long()
-		#print(self.feats.shape)
+	def __init__(self, features_img, labels, device):
+		self.labels = labels.long().to(device)
+		self.feats = features_img.float().to(device)
 
-	def __getitem__(self,index):
+	def __getitem__(self, index):
 		X = self.feats[index, :]
-		atts = self.atts[index, :]
-		y = self.y[index]-1 #subtracting 1 to index classes from 0-199, NLLLoss requires it
-		return X, atts, y
+		y = self.labels[index]-1 #for NLLL loss
+		return X, y
 
 	def __len__(self):
 		return len(self.labels)
 
 	def __targetClasses__(self):
-		return np.unique(labels)
+		return np.unique(self.labels)
 
 		
 		
@@ -148,3 +150,9 @@ class classifier_dataloader(Dataset):
 #   model = CADA_VAE()
 #   recon_x, recon_sig, mu_z, mu_sig, sigDecoder_x, xDecoder_sig,logvar_x, logvar_sig = model(x, sig)
 #   print(recon_sig.shape)
+
+'''
+1. we are not using transform.test data, but fit_transform, is this correct tho?
+
+
+'''
