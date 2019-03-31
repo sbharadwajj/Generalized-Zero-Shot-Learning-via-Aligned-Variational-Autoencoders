@@ -27,8 +27,6 @@ class dataloader(Dataset):
 
 		self.feats_ = torch.from_numpy(self.feats).float().to(device)
 		self.labels_ = torch.from_numpy(self.labels).float().to(device)
-
-		# ONE HOT ENCODED
 		self.sig_ = torch.from_numpy(self.sig).float().to(device)
 
 	def __getitem__(self, index):
@@ -119,15 +117,16 @@ class classifier_dataloader(Dataset):
 		self.feats = torch.cat(features_img)
 		self.atts = torch.cat(features_att)
 		self.y = torch.cat(labels).long()
+		#print(self.feats.shape)
 
 	def __getitem__(self,index):
 		X = self.feats[index, :]
 		atts = self.atts[index, :]
-		y = self.y[index]
+		y = self.y[index]-1 #subtracting 1 to index classes from 0-199, NLLLoss requires it
 		return X, atts, y
 
 	def __len__(self):
-		return len(np.unique(self.labels).tolist())
+		return len(self.labels)
 
 	def __targetClasses__(self):
 		return np.unique(labels)

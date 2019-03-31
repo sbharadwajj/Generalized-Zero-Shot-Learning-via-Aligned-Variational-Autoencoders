@@ -13,6 +13,8 @@ from tqdm.auto import tqdm
 from time import sleep
 from sklearn.preprocessing import MinMaxScaler
 import argparse
+from sklearn.metrics import classification_report,confusion_matrix
+
 
 from dataset import dataloader, classifier_dataloader
 from model import encoder_cada, decoder_cada, Classifier
@@ -27,7 +29,7 @@ parser.add_argument('--epochs', type=int, default=100,
 					help='Number of epochs')
 parser.add_argument('--latent_size', type=int, default=64,
 					help='size of the latent vector')
-parser.add_argument('--dataset_path', type=str, default='../../dataset/xlsa17/data/CUB/',
+parser.add_argument('--dataset_path', type=str, default='../../../dataset/xlsa17/data/CUB/',
 					help='Name of the dataset')
 parser.add_argument('--split', type=str, default='train',
 					help='Which feature to generate')
@@ -168,15 +170,15 @@ class Gzsl_vae():
 		for n in num_classes:
 			# 50 latent features per seen classes and 100 latent features per unseen classes
 			if split == 'trainval':
-				num_features = 50
+				num_features = 200
 				indexs = self.trainval_set.__getLabels__(n)
 				dataset = self.trainval_set
 			if split == 'test_unseen':
-				num_features = 100
+				num_features = 400
 				indexs = self.test_set.__getLabels__(n)
 				dataset = self.test_set
 			if split == 'test_seen':
-				num_features = 100
+				num_features = 200
 				indexs = self.test_set_seen.__getLabels__(n)
 				dataset = self.test_set_seen				
 
@@ -249,8 +251,8 @@ class Gzsl_vae():
 				trainbar_cls.set_description('l:%.3f' %(train_loss/(batch_idx+1)))
 
 			########## VALIDATION ##################
-			accu_unseen = 0
-			accu_seen = 0
+			#accu_unseen = 0
+			#accu_seen = 0
 			def val_gzsl(testbar_cls):
 				with torch.no_grad():
 					self.classifier.eval()
@@ -272,17 +274,22 @@ class Gzsl_vae():
 			preds_unseen, target_unseen = val_gzsl(testbar_cls_unseen)
 			preds_seen, target_seen = val_gzsl(testbar_cls_seen)
 
-			########## ACCURACY METRIC ##################
+			############### ACCURACY METRIC ##################
 			def compute_per_class_acc_gzsl(test_label, predicted_label, target_classes):
-				per_class_accuracies = torch.zeros(target_classes.shape[0]).float().to(self.device)
-				predicted_label = predicted_label.to(self.device)
-				for i in range(target_classes.shape[0]):
-					is_class = test_label==target_classes[i]
-					per_class_accuracies[i] = torch.div((predicted_label[is_class]==test_label[is_class]).sum().float(),is_class.sum().float())
-				return per_class_accuracies.mean()
+				# per_class_accuracies = torch.zeros(target_classes.shape[0]).float().to(self.device)
+				# predicted_label = predicted_label.to(self.device)
+				# for i in range(target_classes.shape[0]):
+				# 	is_class = test_label==target_classes[i]
+				# 	per_class_accuracies[i] = torch.div((predicted_label[is_class]==test_label[is_class]).sum().float(),is_class.sum().float())
+				# return per_class_accuracies.mean()
+				cm = confusion_matrix(test_label, predicted_label)
+				cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+				avg = sum(cm.diagonal())/len(target_classes)
+				return avg
 
-			accu_unseen = compute_per_class_acc_gzsl(target_unseen, preds_unseen, self.test_unseen_target_classes)
-			accu_seen = compute_per_class_acc_gzsl(target_seen, preds_seen, self.test_seen_target_classes)
+			#adding 1 to index classes from 1-200
+			accu_unseen = compute_per_class_acc_gzsl(target_unseen, preds_unseen+1, self.test_unseen_target_classes)
+			accu_seen = compute_per_class_acc_gzsl(target_seen, preds_seen+1, self.test_seen_target_classes)
 
 			if (accu_seen+accu_unseen)>0:
 				H = (2*acc_seen*acc_novel) / (acc_seen+acc_novel)
@@ -306,7 +313,7 @@ class Gzsl_vae():
 
 if __name__=='__main__':
 	model = Gzsl_vae()
-	epochs=5
+	epochs=100
 	for epoch in range(1, epochs + 1):
 		print("epoch:", epoch)
 		model.train(epoch)
@@ -319,9 +326,10 @@ if __name__=='__main__':
 
 
 '''
-To complete:
-
-
+To check:
+1. Are the features being extracted properly?
+2. Is the evaluation metric correct?
+3. Is the classifier correct?
 
 '''
 	
