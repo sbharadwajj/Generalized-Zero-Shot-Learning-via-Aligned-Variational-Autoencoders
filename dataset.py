@@ -132,27 +132,3 @@ class classifier_dataloader(Dataset):
 
 	def __targetClasses__(self):
 		return np.unique(self.labels)
-
-		
-		
-
-# if __name__ == "__main__":
-#   dataset = DatasetLoader(split='train')
-#   x,y,sig = dataset.__getitem__(5)
-#   #len = dataset.__getlen__()
-#   #print(len)
-#   #sig = dataset.__get_attlen__()
-#   #print(sig)
-#   trainloader = data.DataLoader(dataset, batch_size=125, shuffle=True)
-#   tbar = tqdm(trainloader)
-#   #for batch_idx, (x,y,sig) in enumerate(trainloader):
-#     #print(batch_idx)
-#   model = CADA_VAE()
-#   recon_x, recon_sig, mu_z, mu_sig, sigDecoder_x, xDecoder_sig,logvar_x, logvar_sig = model(x, sig)
-#   print(recon_sig.shape)
-
-'''
-1. we are not using transform.test data, but fit_transform, is this correct tho?
-
-
-'''

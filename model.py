@@ -75,7 +75,7 @@ class Classifier(nn.Module):
 		self.fc = nn.Linear(input_dim,num_class)
 		self.softmax = nn.LogSoftmax(dim=1)
 
-		self.apply(weights_init)
+		#self.apply(weights_init)
 
 	def forward(self, features):
 		x = self.softmax(self.fc(features))

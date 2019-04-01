@@ -28,9 +28,9 @@ parser.add_argument('--epochs', type=int, default=100,
 					help='Number of epochs')
 parser.add_argument('--latent_size', type=int, default=64,
 					help='size of the latent vector')
-parser.add_argument('--dataset_path', type=str, default='../../dataset/xlsa17/data/CUB/',
+parser.add_argument('--dataset_path', type=str, default='../../../dataset/xlsa17/data/CUB/',
 					help='Name of the dataset')
-parser.add_argument('--model_path', type=str, default='models/checkpoint_cada.pth',
+parser.add_argument('--model_path', type=str, default='../models/checkpoint_cada.pth',
 					help='path of pretrained model')
 parser.add_argument('--device', type=str, default='cpu',
 					help='cuda or cpu')
@@ -146,7 +146,7 @@ class Gzsl_vae():
 		print(train_loss/(batch_idx+1))
 		
 		if epoch%100==0:
-			name = "models/checkpoint_cada.pth"
+			name = "models/checkpoint_cada_AWA1.pth"
 			torch.save({
 				'epoch':epoch,
 				'model_encoder_state_dict':self.model_encoder.state_dict(),
@@ -217,14 +217,14 @@ class Gzsl_vae():
 		train_features, train_labels, test_unseen_features, test_unseen_labels, test_seen_features, test_seen_labels = self.extract_features(params)
 
 		self.cls_trainData = classifier_dataloader(features_img=train_features, labels=train_labels, device=self.device)
-		self.cls_trainloader = data.DataLoader(self.cls_trainData, batch_size=100, shuffle=True)
+		self.cls_trainloader = data.DataLoader(self.cls_trainData, batch_size=32, shuffle=True)
 
 		self.cls_test_unseen = classifier_dataloader(features_img=test_unseen_features, labels=test_unseen_labels, device=self.device)
-		self.cls_test_unseenLoader = data.DataLoader(self.cls_test_unseen, batch_size=100, shuffle=False)
+		self.cls_test_unseenLoader = data.DataLoader(self.cls_test_unseen, batch_size=32, shuffle=False)
 		self.test_unseen_target_classes = self.cls_test_unseen.__targetClasses__()		
 
 		self.cls_test_seen = classifier_dataloader(features_img=test_seen_features, labels=test_seen_labels, device=self.device)
-		self.cls_test_seenLoader = data.DataLoader(self.cls_test_seen, batch_size=100, shuffle=False)
+		self.cls_test_seenLoader = data.DataLoader(self.cls_test_seen, batch_size=32, shuffle=False)
 		self.test_seen_target_classes = self.cls_test_seen.__targetClasses__()
 
 
@@ -330,7 +330,7 @@ if __name__=='__main__':
 				'att_seen':0,
 				'att_unseen':400}
 
-		nepochs = 20
+		nepochs = 40
 		s, u, h = model.train_classifier(nepochs)
 
 
