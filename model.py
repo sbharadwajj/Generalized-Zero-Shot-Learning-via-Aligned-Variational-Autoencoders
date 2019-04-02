@@ -10,15 +10,21 @@ import numpy as np
 from tqdm import tqdm
 
 def weights_init(m):
-    classname = m.__class__.__name__
-    if classname.find('Linear') != -1:
-        m.bias.data.fill_(0)
+	classname = m.__class__.__name__
+	if classname.find('Linear') != -1:
+		m.bias.data.fill_(0)
 
-        nn.init.xavier_uniform_(m.weight,gain=0.5)
+		nn.init.xavier_uniform_(m.weight,gain=0.5)
 
 
 class encoder_cada(nn.Module):
-	"""docstring for encoder_cada"""
+	"""
+	This is the encoder class which consists of the
+	encoder for features and the attributes.
+
+	features: x
+	attributes: att
+	"""
 	def __init__(self, input_dim=2048, atts_dim=312, z=64 ):
 		super(encoder_cada, self).__init__()
 		self.encoder_x = nn.Sequential(nn.Linear(input_dim, 1560), nn.ReLU())
@@ -32,9 +38,13 @@ class encoder_cada(nn.Module):
 		self.apply(weights_init)
 
 	def reparameterize(self, mu, logvar):
-		std = torch.exp(logvar) 
-		eps = torch.randn_like(std) # mean 0, std
-		return eps.mul(std).add_(mu)
+		# std = torch.exp(logvar) 
+		# eps = torch.randn_like(std) # mean 0, std
+		# return eps.mul(std).add_(mu)
+		sigma = torch.exp(logvar)
+		eps = torch.FloatTensor(logvar.size()[0],1).normal_(0,1)
+		eps  = eps.expand(sigma.size())
+		return mu + sigma*eps
 
 	def forward(self, x, att):
 		x = self.encoder_x(x)
@@ -75,8 +85,10 @@ class Classifier(nn.Module):
 		self.fc = nn.Linear(input_dim,num_class)
 		self.softmax = nn.LogSoftmax(dim=1)
 
-		#self.apply(weights_init)
+		self.apply(weights_init)
 
 	def forward(self, features):
 		x = self.softmax(self.fc(features))
+
 		return x
+

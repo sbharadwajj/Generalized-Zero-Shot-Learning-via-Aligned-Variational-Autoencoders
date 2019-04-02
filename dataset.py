@@ -56,7 +56,7 @@ class dataloader(Dataset):
 		return len(np.unique(self.res101['labels']).tolist())
 
 	def __attributeVector__(self):
-		return self.signature[:,np.unique(self.labels_)].transpose(), np.unique(self.labels_)
+		return self.signature[:,np.unique(self.labels_)-1].transpose(), np.unique(self.labels_)
 
 	def __Test_Features_Labels__(self):
 		return self.feats_, self.labels_

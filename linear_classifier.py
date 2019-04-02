@@ -109,9 +109,9 @@ class Gzsl_vae():
 		'''	
 		if epoch > 5 and epoch < 21:
 			self.delta += 0.54
-		if epoch > 20 and epoch < 75:
+		if epoch > 20 and epoch < 76:
 			self.gamma += 0.044
-		if epoch < 91:
+		if epoch < 93:
 			self.beta += 0.0026
 
 		trainbar = tqdm(self.trainloader)    
@@ -119,7 +119,10 @@ class Gzsl_vae():
 		self.model_decoder.train()
 		train_loss = 0
 
-		for batch_idx, (x,y,sig) in enumerate(trainbar):		
+		for batch_idx, (x,y,sig) in enumerate(trainbar):
+			x.requires_grad = False
+			sig.requires_grad = False
+
 			z_img, z_sig, mu_x, logvar_x, mu_sig, logvar_sig = self.model_encoder(x, sig)
 			recon_x, recon_sig, sigDecoder_x, xDecoder_sig = self.model_decoder(z_img, z_sig) 
 			#loss			
@@ -146,7 +149,7 @@ class Gzsl_vae():
 		print(train_loss/(batch_idx+1))
 		
 		if epoch%100==0:
-			name = "models/checkpoint_cada_AWA1.pth"
+			name = "checkpoint_cada_"+args.dataset+".pth"
 			torch.save({
 				'epoch':epoch,
 				'model_encoder_state_dict':self.model_encoder.state_dict(),
@@ -162,6 +165,9 @@ class Gzsl_vae():
 		print(20*'-')
 		print("Preparing dataset for the classifier..")
 
+		self.model_encoder.eval()
+		self.model_decoder.eval()
+
 		img_seen_feats = params['img_seen']
 		img_unseen_feats = params['img_unseen']
 		att_seen_feats = params['att_seen']
@@ -176,8 +182,10 @@ class Gzsl_vae():
 		#for trainval features:
 		features_seen = []
 		labels_seen = []
+		k=0
 		for n in seen_classes:
 			perclass_feats = self.trainval_set.__get_perclass_feats__(n)
+			k += perclass_feats.shape[0]
 			repeat_factor = math.ceil(img_seen_feats/perclass_feats.shape[0])
 			perclass_X = np.repeat(perclass_feats, repeat_factor, axis=0)
 			perclass_labels = torch.from_numpy(np.repeat(n, img_seen_feats, axis=0)).long()
@@ -186,6 +194,8 @@ class Gzsl_vae():
 			# 	print(n,"-------", seen_feats.shape)
 			features_seen.append(seen_feats)
 			labels_seen.append(perclass_labels)
+		print("Number of seen features:", k)
+
 
 		tensor_seen_features = torch.cat(features_seen)
 		tensor_seen_feats_labels = torch.cat(labels_seen)
@@ -215,6 +225,7 @@ class Gzsl_vae():
 	##################### TRAINING THE CLASSIFIER #######################
 	def train_classifier(self,epochs):
 		train_features, train_labels, test_unseen_features, test_unseen_labels, test_seen_features, test_seen_labels = self.extract_features(params)
+		np.save('../CUB_features/test_novel_Y.npy', test_unseen_labels)
 
 		self.cls_trainData = classifier_dataloader(features_img=train_features, labels=train_labels, device=self.device)
 		self.cls_trainloader = data.DataLoader(self.cls_trainData, batch_size=32, shuffle=True)
@@ -308,7 +319,7 @@ class Gzsl_vae():
 
 			print(20*'-')
 			print('Epoch:', epoch)
-			print('u, s, h =%.4f,%.4f,%.4f'%(best_unseen,best_seen,best_H))
+			print('Best: u, s, h =%.4f,%.4f,%.4f'%(best_unseen,best_seen,best_H))
 			print('u, s, h =%.4f,%.4f,%.4f'%(accu_unseen,accu_seen,H))
 			print(20*'-')
 				
@@ -323,22 +334,12 @@ if __name__=='__main__':
 		for epoch in range(1, epochs + 1):
 			print("epoch:", epoch)
 			model.train(epoch)
-	else:
-		#CLASSIFIER
-		params = {'img_seen':200,
-				'img_unseen':0,
-				'att_seen':0,
-				'att_unseen':400}
+	#CLASSIFIER
+	params = {'img_seen':200,
+			'img_unseen':0,
+			'att_seen':0,
+			'att_unseen':400}
+	nepochs = 40
+	s, u, h = model.train_classifier(nepochs)
 
-		nepochs = 40
-		s, u, h = model.train_classifier(nepochs)
-
-
-
-'''
-To complete:
-1. classifier not updating after 2nd epoch 
-
-
-'''
 	
