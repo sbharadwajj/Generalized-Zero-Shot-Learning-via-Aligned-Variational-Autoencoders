@@ -38,18 +38,3 @@ python linear_classifier.py --dataset CUB --dataset_path xlsa17/data/CUB/
 |AWA2| 75.0, 55.8, 63.9 | 82.77, 44.94, 58.25 |
 |SUN| 35.7, 47.2, 40.6 | |
 
-
-## References
-
-If this repository was useful for your research, please cite.
-
-```
-@misc{chichilicious,
-  author = {Bharadwaj, Shrisha},
-  title = {Generalized-Zero-Shot-Learning-via-Aligned-Variational-Autoencoders},
-  year = {2019},
-  publisher = {GitHub},
-  journal = {GitHub repository},
-  howpublished = {\url{https://github.com/chichilicious/Generalized-Zero-Shot-Learning-via-Aligned-Variational-Autoencoders}},
-}
-```
