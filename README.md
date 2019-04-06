@@ -1,6 +1,6 @@
 # Generalized-Zero-Shot-Learning-via-Aligned-Variational-Autoencoders
 
-This repository has the pytorch implementation of the paper "Generalized Zero-and Few-Shot Learning via Aligned Variational Autoencoders." (CVPR 2019) [[pdf]](https://arxiv.org/pdf/1812.01784.pdf)
+This repository has the pytorch implementation of the paper "Generalized Zero-and Few-Shot Learning via Aligned Variational Autoencoders." (CVPR 2019) [[pdf]](https://arxiv.org/pdf/1812.01784.pdf). 
 
 This repository has the implementation of zero-shot learning in a Generalized setting and has been tested on 4 datasets.
 
@@ -36,5 +36,5 @@ python linear_classifier.py --dataset CUB --dataset_path xlsa17/data/CUB/
 | CUB| 53.5, 51.6, 52.4 | 53.52, 47.29, 50.21 |
 |AWA1| 72.8, 57.3, 64.1 | 73.54, 46.69, 57.19 |
 |AWA2| 75.0, 55.8, 63.9 | 82.77, 44.94, 58.25 |
-|SUN| 35.7, 47.2, 40.6 | |
+|SUN| 35.7, 47.2, 40.6 | 39.03, 37.43, 38.21 |
 

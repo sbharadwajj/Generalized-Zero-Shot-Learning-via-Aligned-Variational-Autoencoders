@@ -114,7 +114,9 @@ class dataloader(Dataset):
 		
 		self.scaler.fit_transform(feat_vec)
 
-		return labels_loc, feat_vec, sig_vec
+		labels_loc_ = np.int64(labels_loc)
+
+		return labels_loc_, feat_vec, sig_vec
 		
 class classifier_dataloader(Dataset):
 	"""docstring for classifier_dataloader"""
